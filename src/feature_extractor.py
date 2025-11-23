@@ -8,7 +8,7 @@ Version 17 (PCA + Vector Scalarization + FFT Reuse):
 - Maximum computational efficiency
 
 Key Improvements over V16:
-- Feature count: 23 → 12 (47.8% reduction)
+- Feature count: 23 → 15 (34.8% reduction)
 - FFT calls: 6 → 1 (83.3% reduction!) ⭐
 - Speed: ~60-65% faster (FFT-weighted)
 
@@ -20,7 +20,7 @@ Optimizations:
 Version 16 (Optimized):
 - Sensor-specific feature extraction (only extract what's needed)
 - Added RMS Frequency (RMSF) feature
-- Reduced feature count from 77 to 23
+- Reduced feature count from 77(11 per field) to 23
 
 Author: WISE Team, Project MOBY
 Date: 2025-11-21 (Optimized)
@@ -53,9 +53,12 @@ FEATURE_CONFIG_V17 = {
         'PC1_Direction_Z'     # 9. 주축 방향 Z 성분
     ],
     
-    # 3축 각속도: 1개 특징 (벡터 스칼라화)
+    # 3축 각속도: 4개 특징 (벡터 스칼라화 + 축별 변동성)
     'gyro': [
-        'VectorRMS'           # 1. 속도 불안정성 총량
+        'VectorRMS',          # 1. 속도 불안정성 총량
+        'STD_X',              # 2. X축 회전 속도 변동성
+        'STD_Y',              # 3. Y축 회전 속도 변동성
+        'STD_Z'               # 4. Z축 회전 속도 변동성
     ],
     
     # 환경 센서: 2개 특징
@@ -77,7 +80,7 @@ os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 def read_influxdb_csv(file_path: str) -> Tuple[pd.DataFrame, float]:
     """
-    InfluxDB CSV 파일 읽기 (V16과 동일)
+    InfluxDB CSV 파일 읽기
     """
     with open(file_path, 'r', encoding='utf-8') as f:
         lines = f.readlines()
@@ -260,14 +263,32 @@ def compute_mean(signal: np.ndarray) -> float:
     """Mean"""
     return np.mean(signal)
 
+def compute_std_xyz(data_3axis: np.ndarray) -> Tuple[float, float, float]:
+    """
+    각 축의 표준편차 (Standard Deviation)
+    
+    물리적 의미: 각 축별 회전 속도 변동성
+    
+    Parameters:
+    - data_3axis: (n_samples, 3) numpy array
+    
+    Returns:
+    - (std_x, std_y, std_z) tuple
+    """
+    return (
+        np.std(data_3axis[:, 0]),
+        np.std(data_3axis[:, 1]),
+        np.std(data_3axis[:, 2])
+    )
+
 # =====================================
 # 통합 특징 추출 함수
 # =====================================
 
-def extract_features_v17(data_dict: Dict[str, np.ndarray], 
+def extract_features(data_dict: Dict[str, np.ndarray], 
                          sampling_rate: float) -> Dict[str, float]:
     """
-    V17 특징 추출: PCA + 벡터 스칼라화
+    특징 추출: PCA + 벡터 스칼라화
     
     Parameters:
     - data_dict: {
@@ -312,12 +333,18 @@ def extract_features_v17(data_dict: Dict[str, np.ndarray],
         features['accel_PC1_Direction_Y'] = pca_result['direction'][1]
         features['accel_PC1_Direction_Z'] = pca_result['direction'][2]
     
-    # ===== 각속도 특징 (1개) =====
+    # ===== 각속도 특징 (4개) =====
     if 'gyro' in data_dict and len(data_dict['gyro']) > 0:
         gyro_data = data_dict['gyro']
         
-        # Vector RMS (Mean과 STD를 대체)
+        # 1. Vector RMS (총 불안정성)
         features['gyro_VectorRMS'] = compute_vector_rms(gyro_data)
+        
+        # 2-4. 축별 표준편차 (방향별 변동성)
+        std_x, std_y, std_z = compute_std_xyz(gyro_data)
+        features['gyro_STD_X'] = std_x
+        features['gyro_STD_Y'] = std_y
+        features['gyro_STD_Z'] = std_z
     
     # ===== 환경 특징 (2개) =====
     if 'pressure' in data_dict and len(data_dict['pressure']) > 0:
@@ -332,12 +359,12 @@ def extract_features_v17(data_dict: Dict[str, np.ndarray],
 # 다중 센서 파일 처리
 # =====================================
 
-def process_multi_sensor_files_v17(file_dict: Dict[str, str],
+def process_multi_sensor_files(file_dict: Dict[str, str],
                                     resample_rate: str = '100ms',
                                     window_size: float = WINDOW_SIZE,
                                     window_overlap: float = WINDOW_OVERLAP) -> pd.DataFrame:
     """
-    여러 센서 파일을 동기화하여 V17 특징 추출
+    여러 센서 파일을 동기화하여 특징 추출
     
     Parameters:
     - file_dict: {sensor_type: file_path} 딕셔너리
@@ -349,8 +376,8 @@ def process_multi_sensor_files_v17(file_dict: Dict[str, str],
     - 특징 DataFrame
     """
     
-    print("\n=== Multi-Sensor Processing V17 (PCA + Vector Scalarization) ===")
-    print(f"Expected features: 12 (Accel: 9, Gyro: 1, Env: 2)")
+    print("\n=== Multi-Sensor Processing (PCA + Vector Scalarization) ===")
+    print(f"Expected features: 15 (Accel: 9, Gyro: 4, Env: 2)")
     
     # 1. 각 센서 파일 독립적으로 읽고 리샘플링
     resampled_dfs = []
@@ -410,7 +437,7 @@ def process_multi_sensor_files_v17(file_dict: Dict[str, str],
     total_time = merged_df['Time(s)'].iloc[-1] - merged_df['Time(s)'].iloc[0]
     effective_sr = (n_samples - 1) / total_time if total_time > 0 else 1.0
     
-    print(f"\nExtracting V17 features with {window_size}s windows (overlap: {window_overlap}s)...")
+    print(f"\nExtracting features with {window_size}s windows (overlap: {window_overlap}s)...")
     print(f"Effective sampling rate: {effective_sr:.2f} Hz")
     
     features_list = []
@@ -466,7 +493,7 @@ def process_multi_sensor_files_v17(file_dict: Dict[str, str],
                 data_dict['temperature'] = temperature
         
         # 특징 추출
-        features = extract_features_v17(data_dict, effective_sr)
+        features = extract_features(data_dict, effective_sr)
         
         # 메타데이터 추가
         features['window_id'] = window_count
@@ -496,7 +523,7 @@ def process_multi_sensor_files_v17(file_dict: Dict[str, str],
 
 if __name__ == "__main__":
     print("\n" + "=" * 70)
-    print("Feature Extraction V17 - PCA + Vector Scalarization")
+    print("Feature Extraction - PCA + Vector Scalarization")
     print("=" * 70)
     
     sensor_files = {
@@ -507,7 +534,7 @@ if __name__ == "__main__":
     valid_files = {k: v for k, v in sensor_files.items() if os.path.exists(v)}
     
     if valid_files:
-        features = process_multi_sensor_files_v17(
+        features = process_multi_sensor_files(
             valid_files,
             resample_rate='78.125ms',  # ~12.8Hz
             window_size=WINDOW_SIZE,
