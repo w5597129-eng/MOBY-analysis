@@ -1,0 +1,92 @@
+{
+    "model_type": "MLP Classifier (Multi-Label) - ONNX",
+    "training_date": "2025-11-24 16:11:09",
+    "data_sources": {
+        "normal": "data/processed/1124_features.csv",
+        "fluctuating": "data/processed/1120_features_S1.csv",
+        "unbalance": "data/processed/1120_features_S2.csv"
+    },
+    "label_mapping": {
+        "fluctuating": [
+            1,
+            0
+        ],
+        "unbalance": [
+            0,
+            1
+        ],
+        "normal": [
+            0,
+            0
+        ]
+    },
+    "dataset": {
+        "total_samples": 2221,
+        "train_samples": 1887,
+        "test_samples": 334,
+        "feature_dim": 15,
+        "label_distribution": {
+            "Fluctuating": 741,
+            "Unbalance": 757,
+            "Normal": 723
+        }
+    },
+    "architecture": {
+        "input_size": 15,
+        "hidden_layers": [
+            64,
+            32
+        ],
+        "output_size": 2,
+        "total_parameters": 3170
+    },
+    "hyperparameters": {
+        "epochs": 20,
+        "batch_size": 32,
+        "learning_rate": 0.001,
+        "optimizer": "Adam",
+        "loss_function": "BCELoss",
+        "random_seed": 42
+    },
+    "training_results": {
+        "training_time_seconds": 1.372778,
+        "final_loss": 0.0004759300609910466,
+        "min_loss": 0.0004759300609910466,
+        "loss_history": [
+            0.572844446715662,
+            0.21502751111984253,
+            0.06102867105628474,
+            0.0247436325239428,
+            0.01325859910003462,
+            0.008199202559762081,
+            0.005535332162438308,
+            0.0040349140625162904,
+            0.0030213121948290175,
+            0.002390626837673076,
+            0.001891802522843167,
+            0.001553895118176716,
+            0.001293165110529132,
+            0.0010877308039630022,
+            0.0009257359833701245,
+            0.0007951873574372365,
+            0.0006937497306291519,
+            0.0006089086223332511,
+            0.0005345243681419515,
+            0.0004759300609910466
+        ]
+    },
+    "onnx_export": {
+        "opset_version": 11,
+        "input_name": "input",
+        "output_name": "output",
+        "dynamic_axes": true,
+        "validation_passed": true
+    },
+    "saved_files": {
+        "onnx_model": "models\\mlp_classifier.onnx",
+        "pytorch_model": "models\\mlp_classifier.pth",
+        "scaler": "models\\scaler_mlp.pkl",
+        "data_split": "models\\data_split.npz",
+        "loss_curve": "results/mlp\\mlp_loss_curve.png"
+    }
+}
